@@ -1,10 +1,11 @@
 """
-Controller for handling user login and session management.
+Controller for handling user login and session management with enhanced security.
 """
 
 from flask import request, jsonify, Blueprint, session
 from auth.services.login_service import LoginService
 from datetime import timedelta
+from captcha import verify_captcha
 
 login_controller = Blueprint("login_controller", __name__)
 login_service = LoginService()
@@ -19,15 +20,13 @@ def login_user():
     data = request.json
     email = data.get("email")
     password = data.get("password")
+    captcha_response = data.get("captcha_response")
 
-    # Validate email and password presence
-    if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400
+    if not (email and password and captcha_response):
+        return jsonify({"error": "Email, password, and captcha response are required"}), 400
 
-    # Password length validation
-    MIN_PASSWORD_LENGTH = 8
-    if len(password) < MIN_PASSWORD_LENGTH:
-        return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"}), 400
+    if not verify_captcha(captcha_response):
+        return jsonify({"error": "Invalid captcha response"}), 400
 
     try:
         user = login_service.authenticate_user(email=email, password=password)
