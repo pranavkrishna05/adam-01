@@ -1,96 +1,70 @@
 """
-Service for managing password reset requests and processing.
+Service to handle secure password reset functionality.
 """
 
-import hashlib
-import time
-import jwt
-import smtplib
-from email.message import EmailMessage
+import secrets
+import re
+from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash
 from db.database import Database
+from auth.models.user_model import User
 
 class PasswordResetService:
     """
-    Handles sending password reset links and resetting passwords.
+    Handles password reset requests, email verification, and token-based reset flow.
     """
 
-    SECRET_KEY = "super-secret-key"
-    TOKEN_EXPIRATION = 86400  # 24 hours in seconds.
+    TOKEN_EXPIRATION_HOURS = 24
 
     def __init__(self):
         self.db = Database()
 
-    def send_reset_email(self, email: str) -> bool:
+    def initiate_reset(self, email: str) -> None:
         """
-        Sends a password reset email with a token if the user exists.
+        Initiates password reset process by generating a reset token and sending it to the user.
         """
-        user_record = self.db.get_user_by_email(email)
-        if not user_record:
-            return False
+        user = self.db.get_user_by_email(email)
+        if not user:
+            raise ValueError("No user found with this email")
 
-        reset_token = self.generate_token(email)
-        reset_link = f"https://example.com/password-reset?token={reset_token}"
+        token = secrets.token_urlsafe(32)
+        expiration_time = datetime.utcnow() + timedelta(hours=self.TOKEN_EXPIRATION_HOURS)
+        self.db.save_password_reset_token(email, token, expiration_time)
+        self._send_reset_email(email, token)
 
-        # Send the email (assuming SMTP server is configured).
-        email_sent = self.send_email(
-            recipient=email,
-            subject="Password Reset Request",
-            body=f"Click the link below to reset your password:\n\n{reset_link}\n\nThis link will expire in 24 hours."
-        )
-        return email_sent
-
-    def reset_password(self, token: str, new_password: str) -> bool:
+    def reset_password(self, token: str, new_password: str) -> None:
         """
         Resets the user's password if the token is valid and not expired.
         """
-        try:
-            payload = jwt.decode(token, self.SECRET_KEY, algorithms=["HS256"])
-            email = payload.get("email")
+        token_record = self.db.get_reset_token_details(token)
+        if not token_record:
+            raise ValueError("Invalid or expired token")
 
-            hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
-            success = self.db.update_user_password(email, hashed_password)
-            return success
-        except jwt.ExpiredSignatureError:
-            return False
-        except jwt.InvalidTokenError:
-            return False
+        if datetime.utcnow() > token_record["expires_at"]:
+            raise ValueError("Reset token has expired")
 
-    def generate_token(self, email: str) -> str:
-        """
-        Generates a reset token with a 24-hour expiration.
-        """
-        payload = {
-            "email": email,
-            "exp": int(time.time()) + self.TOKEN_EXPIRATION
-        }
-        return jwt.encode(payload, self.SECRET_KEY, algorithm="HS256")
+        if not self._is_secure_password(new_password):
+            raise ValueError(
+                "Password must be at least 8 characters long, and contain uppercase, lowercase, number, and special character"
+            )
 
-    def is_password_secure(self, password: str) -> bool:
-        """
-        Validates if the password meets the security criteria.
-        Criteria: minimum length and complexity (contains at least one digit).
-        """
-        PASSWORD_MIN_LENGTH = 8
-        return len(password) >= PASSWORD_MIN_LENGTH and any(char.isdigit() for char in password)
+        # Hash and update the new password
+        hashed_password = generate_password_hash(new_password)
+        self.db.update_user_password(token_record["email"], hashed_password)
+        self.db.invalidate_reset_token(token)
 
-    def send_email(self, recipient: str, subject: str, body: str) -> bool:
+    def _is_secure_password(self, password: str) -> bool:
         """
-        Sends an email using an SMTP server.
+        Validates password security against complexity rules.
         """
-        try:
-            msg = EmailMessage()
-            msg.set_content(body)
-            msg["Subject"] = subject
-            msg["From"] = "no-reply@example.com"
-            msg["To"] = recipient
+        pattern = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"
+        return bool(re.match(pattern, password))
 
-            # Example SMTP configuration.
-            with smtplib.SMTP("smtp.example.com", 587) as smtp:
-                smtp.starttls()
-                smtp.login("your-username", "your-password")
-                smtp.send_message(msg)
-            return True
-        except Exception as e:
-            # Log the exception in a real application.
-            print(f"Failed to send email: {e}")
-            return False
+    def _send_reset_email(self, email: str, token: str):
+        """
+        Simulates sending a password reset email with a secure token-based link.
+        In production, integrate with an email delivery service.
+        """
+        reset_link = f"https://example.com/reset-password?token={token}"
+        # Simulated log (normally you'd send via SMTP or external provider)
+        print(f"[EMAIL SENT] To: {email} | Reset Link: {reset_link}")
