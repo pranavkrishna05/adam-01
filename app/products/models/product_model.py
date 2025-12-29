@@ -1,5 +1,5 @@
 """
-Product model representing catalog items.
+Product model representing catalog items and state.
 """
 
 from pydantic import BaseModel, Field
@@ -9,7 +9,7 @@ from datetime import datetime
 
 class Product(BaseModel):
     id: int
-    name: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1, max_length=255)
     price: float = Field(..., gt=0)
     description: str = Field(..., min_length=1)
     category: str = Field(..., min_length=1)
