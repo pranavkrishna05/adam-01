@@ -1,60 +1,43 @@
 """
-Service for managing user authentication and session handling.
+Service responsible for user authentication and login restrictions.
 """
 
-import hashlib
-import time
-import jwt
+from werkzeug.security import check_password_hash
+from auth.models.user_model import User
 from db.database import Database
+from datetime import datetime, timedelta
 
 class LoginService:
     """
-    Handles user authentication and session token generation.
+    Handles user login, authentication, and invalid login attempt control.
     """
 
-    SECRET_KEY = "super-secret-key"
-    TOKEN_EXPIRATION = 3600  # Session tokens expire after 1 hour.
-    MAX_INVALID_ATTEMPTS = 5
+    MAX_ATTEMPTS = 5
+    LOCKOUT_TIME_MINUTES = 15
 
     def __init__(self):
         self.db = Database()
-        self.invalid_attempts = {}
 
-    def authenticate_user(self, email: str, password: str) -> str | None:
+    def authenticate_user(self, email: str, password: str) -> User:
         """
-        Authenticates user credentials and returns a session token if successful.
+        Authenticates a user by verifying email and password.
+        Limits invalid login attempts and manages lockout period.
         """
-        user_record = self.db.get_user_by_email(email)
-        if not user_record:
-            self.record_invalid_attempt(email)
-            return None
+        user_data = self.db.get_user_by_email(email)
+        if not user_data:
+            raise ValueError("User not found")
 
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
-        if hashed_password != user_record["password"]:
-            self.record_invalid_attempt(email)
-            return None
+        login_attempts = self.db.get_login_attempts(email)
+        if login_attempts and login_attempts["count"] >= self.MAX_ATTEMPTS:
+            last_attempt_time = login_attempts["last_attempt"]
+            if datetime.utcnow() - last_attempt_time < timedelta(minutes=self.LOCKOUT_TIME_MINUTES):
+                raise ValueError("Account locked due to multiple invalid login attempts. Try again later.")
+            else:
+                self.db.reset_login_attempts(email)
 
-        if self.invalid_attempts.get(email, 0) >= self.MAX_INVALID_ATTEMPTS:
-            return None
+        if not check_password_hash(user_data["password"], password):
+            self.db.increment_login_attempt(email)
+            raise ValueError("Invalid email or password")
 
-        return self.generate_token(email)
-
-    def generate_token(self, email: str) -> str:
-        """
-        Generates a session token with expiration metadata.
-        """
-        payload = {
-            "email": email,
-            "exp": int(time.time()) + self.TOKEN_EXPIRATION
-        }
-        return jwt.encode(payload, self.SECRET_KEY, algorithm="HS256")
-
-    def record_invalid_attempt(self, email: str) -> None:
-        """
-        Records invalid login attempts and enforces limits.
-        """
-        if email not in self.invalid_attempts:
-            self.invalid_attempts[email] = 0
-        self.invalid_attempts[email] += 1
-
-        # Optionally, handle locking out the user after too many attempts.
+        self.db.reset_login_attempts(email)
+        return User(id=user_data["id"], email=user_data["email"])
