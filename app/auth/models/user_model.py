@@ -1,5 +1,5 @@
 """
-User model definition representing registered platform users.
+User model definition for representing registered users.
 """
 
 from pydantic import BaseModel, EmailStr
