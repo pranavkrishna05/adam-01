@@ -1,12 +1,12 @@
 """
-Password Reset model for handling reset token storage and validation.
+Password reset token model for representing the reset process.
 """
 
 from pydantic import BaseModel
+from datetime import datetime
 
-class PasswordReset(BaseModel):
-    id: int | None
+class PasswordResetToken(BaseModel):
     email: str
     token: str
-    expires_at: int
+    expires_at: datetime
 ```
