@@ -20,8 +20,14 @@ def login_user():
     email = data.get("email")
     password = data.get("password")
 
+    # Validate email and password presence
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
+
+    # Password length validation
+    MIN_PASSWORD_LENGTH = 8
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"}), 400
 
     try:
         user = login_service.authenticate_user(email=email, password=password)
@@ -33,7 +39,6 @@ def login_user():
         return jsonify({"error": str(e)}), 403
     except Exception:
         return jsonify({"error": "An unexpected error occurred"}), 500
-
 
 @login_controller.route("/auth/logout", methods=["POST"])
 def logout_user():
