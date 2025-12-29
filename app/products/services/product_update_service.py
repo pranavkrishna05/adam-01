@@ -1,5 +1,5 @@
 """
-Service for managing product updates.
+Service for managing updates to existing product details.
 """
 
 from products.models.product_model import Product
@@ -7,10 +7,10 @@ from db.database import Database
 
 class ProductUpdateService:
     """
-    Handles validation and updates for existing products.
+    Handles the business logic for updating product details.
     """
 
-    ADMIN_SECRET = "super-secret-admin-token"  # Example admin token for validation purposes.
+    ADMIN_SECRET = "super-secret-admin-token"  # Example token for admin authentication.
 
     def __init__(self):
         self.db = Database()
@@ -21,16 +21,22 @@ class ProductUpdateService:
         """
         return token == self.ADMIN_SECRET
 
-    def is_duplicate_name(self, product_id: int, name: str) -> bool:
+    def is_product_name_exists(self, product_id: int, name: str) -> bool:
         """
-        Checks if the provided name already exists for another product.
+        Checks if another product with the given name already exists.
         """
         existing_product = self.db.get_product_by_name(name)
-        return existing_product and existing_product["id"] != product_id
+        return existing_product is not None and existing_product.get("id") != product_id
 
-    def update_product(self, product_id: int, name: str | None, price: float | None, description: str | None, category_id: int | None) -> Product | None:
+    def is_valid_price(self, price: float) -> bool:
         """
-        Updates product details and returns the updated product.
+        Validates if the product price is a positive number.
+        """
+        return isinstance(price, (int, float)) and price > 0
+
+    def update_product(self, product_id: int, name: str | None, price: float | None, description: str | None) -> Product | None:
+        """
+        Updates the product details in the database.
         """
         update_fields = {}
         if name:
@@ -39,11 +45,9 @@ class ProductUpdateService:
             update_fields["price"] = price
         if description is not None:
             update_fields["description"] = description
-        if category_id is not None:
-            update_fields["category_id"] = category_id
 
         success = self.db.update_product(product_id, update_fields)
         if success:
-            product_data = self.db.get_product_by_id(product_id)
-            return Product(**product_data)
+            updated_product = self.db.get_product_by_id(product_id)
+            return Product(**updated_product)
         return None
