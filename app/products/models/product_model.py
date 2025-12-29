@@ -1,5 +1,5 @@
 """
-Product model definition for representing inventory items.
+Product model definition for representing updated products and their attributes.
 """
 
 from pydantic import BaseModel
