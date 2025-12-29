@@ -1,5 +1,5 @@
 """
-Controller for managing product functionality.
+Controller for handling product creation and management operations.
 """
 
 from flask import request, jsonify, Blueprint
@@ -8,38 +8,31 @@ from products.services.product_service import ProductService
 product_controller = Blueprint("product_controller", __name__)
 product_service = ProductService()
 
+
 @product_controller.route("/products", methods=["POST"])
 def add_product():
     """
-    Endpoint for an admin to add a new product.
+    Endpoint for adding a new product to the inventory.
+    Validates name uniqueness, price, and description fields.
     """
-    admin_token = request.headers.get("Admin-Token")
-    
-    if not product_service.validate_admin(admin_token):
-        return jsonify({"error": "Unauthorized access"}), 403
-
     data = request.json
-    name = data.get("name")
-    price = data.get("price")
-    description = data.get("description")
-    category_id = data.get("category_id")
+    if not data:
+        return jsonify({"error": "Request body is required"}), 400
 
-    if not name or not description:
-        return jsonify({"error": "Product name and description are required"}), 400
+    required_fields = ["name", "price", "description", "category"]
+    missing = [f for f in required_fields if f not in data]
+    if missing:
+        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
-    if not isinstance(price, (int, float)) or price <= 0:
-        return jsonify({"error": "Product price must be a positive number"}), 400
-
-    product = product_service.create_product(name, price, description, category_id)
-    if product:
-        return jsonify(product.dict()), 201
-
-    return jsonify({"error": "Product with the same name already exists"}), 400
-
-@product_controller.route("/products", methods=["GET"])
-def list_products():
-    """
-    Endpoint to list all products in the inventory.
-    """
-    products = product_service.get_all_products()
-    return jsonify([product.dict() for product in products]), 200
+    try:
+        product = product_service.create_product(
+            name=data["name"],
+            price=data["price"],
+            description=data["description"],
+            category=data["category"],
+        )
+        return jsonify({"message": "Product created successfully", "product": product.dict()}), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception:
+        return jsonify({"error": "Failed to create product"}), 500
